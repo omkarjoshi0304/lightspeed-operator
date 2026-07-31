@@ -33,12 +33,6 @@ metadata:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: llama-stack-config
-  namespace: openstack-lightspeed
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
   name: lightspeed-stack-config
   namespace: openstack-lightspeed
 

@@ -230,7 +230,6 @@ type OpenStackLightspeedStatus struct {
 // +operator-sdk:csv:customresourcedefinitions:resources={{Deployment,v1,lightspeed-postgres-server}}
 // +operator-sdk:csv:customresourcedefinitions:resources={{Service,v1,lightspeed-app-server}}
 // +operator-sdk:csv:customresourcedefinitions:resources={{Service,v1,lightspeed-postgres-server}}
-// +operator-sdk:csv:customresourcedefinitions:resources={{ConfigMap,v1,llama-stack-config}}
 // +operator-sdk:csv:customresourcedefinitions:resources={{ConfigMap,v1,lightspeed-stack-config}}
 // +operator-sdk:csv:customresourcedefinitions:resources={{ConfigMap,v1,lightspeed-postgres-conf}}
 // +operator-sdk:csv:customresourcedefinitions:resources={{Secret,v1,lightspeed-postgres-secret}}

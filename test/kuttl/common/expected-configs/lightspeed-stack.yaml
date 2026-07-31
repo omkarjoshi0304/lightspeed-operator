@@ -68,7 +68,61 @@ database:
 inference:
   default_model: ibm-granite/granite-3.1-8b-instruct
   default_provider: openstack-lightspeed-provider
+  providers:
+  - allowed_models:
+    - ibm-granite/granite-3.1-8b-instruct
+    api_key_env: OPENSTACK_LIGHTSPEED_PROVIDER_API_KEY
+    extra:
+      base_url: http://mock-llm-api-server-pod:8000/v1
+    type: openai
 llama_stack:
+  config:
+    native_override:
+      external_providers_dir: /app-root/providers.d
+      image_name: openstack-lightspeed-configuration
+      providers:
+        files:
+        - config:
+            metadata_store:
+              backend: sql_default
+              table_name: files_metadata
+            storage_dir: /tmp/llama-stack/files
+          provider_id: meta-reference-files
+          provider_type: inline::localfs
+        safety: []
+      registered_resources:
+        shields: []
+      safety:
+        default_shield_id: null
+      scoring_fns: []
+      server:
+        auth: null
+        host: 0.0.0.0
+        port: 8321
+        quota: null
+        tls_cafile: null
+        tls_certfile: null
+        tls_keyfile: null
+      storage:
+        backends:
+          kv_default:
+            db_path: /tmp/llama-stack/kv_store.db
+          postgres_backend:
+            db: llamastack
+            host: lightspeed-postgres-server.openstack-lightspeed.svc
+            password: ${env.POSTGRESQL_PASSWORD}
+            port: 5432
+            type: sql_postgres
+            user: ${env.POSTGRESQL_USER}
+          sql_default:
+            db_path: /tmp/llama-stack/sql_store.db
+        stores:
+          conversations:
+            backend: postgres_backend
+      telemetry:
+        enabled: false
+      vector_stores:
+        default_embedding_model: null
   url: http://localhost:8321
   use_as_library_client: false
 mcp_servers: []

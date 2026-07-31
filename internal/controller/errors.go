@@ -31,8 +31,6 @@ var (
 	ErrDeleteSARClusterRoleBinding  = errors.New("failed to delete SAR cluster role binding")
 	ErrGenerateAPIConfigmap         = errors.New("failed to generate OpenStack Lightspeed configmap")
 	ErrGetTLSSecret                 = errors.New("failed to get TLS secret")
-	ErrCreateLlamaStackConfigMap    = errors.New("failed to create Llama Stack configmap")
-	ErrGenerateLlamaStackConfigMap  = errors.New("failed to generate Llama Stack configmap")
 	ErrCreateExporterConfigMap      = errors.New("failed to create exporter configmap")
 	ErrReadSystemCABundle           = errors.New("failed to read system CA bundle")
 	ErrParseSystemCABundle          = errors.New("failed to parse system CA bundle")

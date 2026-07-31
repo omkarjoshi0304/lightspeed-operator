@@ -85,9 +85,6 @@ spec:
         name: lightspeed-tls
         version: v1
       - kind: ConfigMap
-        name: llama-stack-config
-        version: v1
-      - kind: ConfigMap
         name: mcp-config
         version: v1
       - kind: Secret

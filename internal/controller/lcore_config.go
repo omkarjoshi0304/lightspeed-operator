@@ -123,13 +123,6 @@ func buildLCoreAuthenticationConfig(_ *common_helper.Helper, _ *apiv1beta1.OpenS
 	}
 }
 
-func buildLCoreInferenceConfig(_ *common_helper.Helper, instance *apiv1beta1.OpenStackLightspeed) map[string]interface{} {
-	return map[string]interface{}{
-		"default_provider": OpenStackLightspeedDefaultProvider,
-		"default_model":    instance.Spec.ModelName,
-	}
-}
-
 // buildLCoreDatabaseConfig configures persistent database storage (PostgreSQL)
 func buildLCoreDatabaseConfig(h *common_helper.Helper, _ *apiv1beta1.OpenStackLightspeed) map[string]interface{} {
 	return map[string]interface{}{
@@ -175,6 +168,149 @@ func buildLCoreConversationCacheConfig(h *common_helper.Helper, _ *apiv1beta1.Op
 			"gss_encmode":  "disable",
 			"ca_cert_path": CABundleMountPath,
 			"namespace":    "conversation_cache",
+		},
+	}
+}
+
+// pythonToolProviderType maps operator provider type names to the type names
+// expected by the llama_stack_configuration.py Python tool's PROVIDER_TYPE_MAP.
+var pythonToolProviderType = map[string]string{
+	OpenAIProviderName:      "openai",
+	GeminiProviderName:      "vertexai",
+	RHOAIVLLMProviderName:   "vllm_rhaiis",
+	RHELAIVLLMProviderName:  "vllm_rhel_ai",
+	AzureOpenAIProviderName: "azure",
+	WatsonXProviderName:     "watsonx",
+}
+
+// buildInferenceProvidersConfig builds the high-level inference.providers list
+// that the llama_stack_configuration.py synthesis tool uses to generate the
+// full OGX inference provider config.
+func buildInferenceProvidersConfig(_ *common_helper.Helper, instance *apiv1beta1.OpenStackLightspeed) map[string]interface{} {
+	provider := buildProvider(instance)
+	envVarName := providerNameToEnvVarName(provider.Name)
+
+	toolType, ok := pythonToolProviderType[provider.Type]
+	if !ok {
+		toolType = provider.Type
+	}
+
+	providerEntry := map[string]interface{}{
+		"type":        toolType,
+		"api_key_env": envVarName + EnvVarSuffixAPIKey,
+	}
+
+	extra := map[string]interface{}{}
+
+	if provider.URL != "" {
+		extra["base_url"] = provider.URL
+	}
+
+	switch provider.Type {
+	case AzureOpenAIProviderName:
+		if provider.AzureDeploymentName != "" {
+			extra["deployment_name"] = provider.AzureDeploymentName
+		}
+		if provider.APIVersion != "" {
+			extra["api_version"] = provider.APIVersion
+		}
+		extra["client_id"] = fmt.Sprintf("${env.%s_CLIENT_ID:=}", envVarName)
+		extra["tenant_id"] = fmt.Sprintf("${env.%s_TENANT_ID:=}", envVarName)
+		extra["client_secret"] = fmt.Sprintf("${env.%s_CLIENT_SECRET:=}", envVarName)
+	case WatsonXProviderName:
+		if provider.WatsonProjectID != "" {
+			extra["project_id"] = provider.WatsonProjectID
+		}
+	}
+
+	if len(extra) > 0 {
+		providerEntry["extra"] = extra
+	}
+
+	modelNames := make([]interface{}, 0, len(provider.Models))
+	for _, m := range provider.Models {
+		modelNames = append(modelNames, m.Name)
+	}
+	if len(modelNames) > 0 {
+		providerEntry["allowed_models"] = modelNames
+	}
+
+	return map[string]interface{}{
+		"default_provider": provider.Name,
+		"default_model":    instance.Spec.ModelName,
+		"providers": []interface{}{
+			providerEntry,
+		},
+	}
+}
+
+// buildNativeOverrideConfig builds overrides deep-merged onto default_run.yaml during synthesis.
+func buildNativeOverrideConfig(_ *common_helper.Helper, instance *apiv1beta1.OpenStackLightspeed) map[string]interface{} {
+	namespace := instance.GetNamespace()
+
+	return map[string]interface{}{
+		"image_name":             "openstack-lightspeed-configuration",
+		"external_providers_dir": ExternalProvidersDir,
+		"server": map[string]interface{}{
+			"host":         "0.0.0.0",
+			"port":         LlamaStackContainerPort,
+			"auth":         nil,
+			"quota":        nil,
+			"tls_cafile":   nil,
+			"tls_certfile": nil,
+			"tls_keyfile":  nil,
+		},
+		"storage": map[string]interface{}{
+			"backends": map[string]interface{}{
+				"postgres_backend": map[string]interface{}{
+					"type":     "sql_postgres",
+					"host":     fmt.Sprintf("%s.%s.svc", PostgresServiceName, namespace),
+					"port":     PostgresServicePort,
+					"user":     "${env.POSTGRESQL_USER}",
+					"password": "${env.POSTGRESQL_PASSWORD}",
+					"db":       PostgresLlamaStackDbName,
+				},
+				"kv_default": map[string]interface{}{
+					"db_path": "/tmp/llama-stack/kv_store.db",
+				},
+				"sql_default": map[string]interface{}{
+					"db_path": "/tmp/llama-stack/sql_store.db",
+				},
+			},
+			"stores": map[string]interface{}{
+				"conversations": map[string]interface{}{
+					"backend": "postgres_backend",
+				},
+			},
+		},
+		"telemetry": map[string]interface{}{
+			"enabled": false,
+		},
+		"scoring_fns": []interface{}{},
+		"safety": map[string]interface{}{
+			"default_shield_id": nil,
+		},
+		"vector_stores": map[string]interface{}{
+			"default_embedding_model": nil,
+		},
+		"registered_resources": map[string]interface{}{
+			"shields": []interface{}{},
+		},
+		"providers": map[string]interface{}{
+			"safety": []interface{}{},
+			"files": []interface{}{
+				map[string]interface{}{
+					"provider_id":   "meta-reference-files",
+					"provider_type": "inline::localfs",
+					"config": map[string]interface{}{
+						"storage_dir": "/tmp/llama-stack/files",
+						"metadata_store": map[string]interface{}{
+							"backend":    "sql_default",
+							"table_name": "files_metadata",
+						},
+					},
+				},
+			},
 		},
 	}
 }
@@ -271,14 +407,19 @@ func buildLCoreConfigYAML(ctx context.Context, h *common_helper.Helper, instance
 		return "", err
 	}
 
+	llamaStackConfig := buildLCoreLlamaStackConfig()
+	llamaStackConfig["config"] = map[string]interface{}{
+		"native_override": buildNativeOverrideConfig(h, instance),
+	}
+
 	// Build the complete config as a map
 	config := map[string]interface{}{
 		"name":                 "Lightspeed Core Service (LCS)",
 		"service":              buildLCoreServiceConfig(h, instance),
-		"llama_stack":          buildLCoreLlamaStackConfig(),
+		"llama_stack":          llamaStackConfig,
 		"user_data_collection": buildLCoreUserDataCollectionConfig(h, instance),
 		"authentication":       buildLCoreAuthenticationConfig(h, instance),
-		"inference":            buildLCoreInferenceConfig(h, instance),
+		"inference":            buildInferenceProvidersConfig(h, instance),
 		"database":             buildLCoreDatabaseConfig(h, instance),
 		"customization":        buildLCoreCustomizationConfig(),
 		"conversation_cache":   buildLCoreConversationCacheConfig(h, instance),

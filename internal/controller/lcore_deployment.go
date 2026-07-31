@@ -38,7 +38,6 @@ import (
 func buildLCorePodTemplateSpec(h *common_helper.Helper, ctx context.Context, instance *apiv1beta1.OpenStackLightspeed) (corev1.PodTemplateSpec, error) {
 	// Build shared volumes
 	volumes := []corev1.Volume{
-		buildOGXConfigVolume(VolumeDefaultMode),
 		buildLightspeedStackConfigVolume(VolumeDefaultMode),
 		buildVectorDBScriptsVolume(),
 	}
@@ -320,10 +319,44 @@ func buildInitContainers(instance *apiv1beta1.OpenStackLightspeed) []corev1.Cont
 		},
 	})
 
+	containers = append(containers, corev1.Container{
+		Name:  "llama-stack-config-synthesis",
+		Image: apiv1beta1.OpenStackLightspeedDefaultValues.LCoreImageURL,
+		Command: []string{
+			"python3", VectorDBScriptsMountPath + "/" + LlamaStackSynthesizeScriptKey,
+			LightspeedStackInitContainerMountPath,
+			VectorDBVolumeOGXConfigPath,
+		},
+		SecurityContext: securityContext,
+		Resources:       resourceRequirements,
+		Env: []corev1.EnvVar{
+			{
+				Name:  "RH_SERVER_OKP",
+				Value: fmt.Sprintf("http://%s.%s.svc:%d", OKPServiceName, instance.GetNamespace(), OKPServicePort),
+			},
+		},
+		VolumeMounts: []corev1.VolumeMount{
+			{
+				Name:      VectorDBVolumeName,
+				MountPath: VectorDBVolumeMountPath,
+			},
+			{
+				Name:      VectorDBScriptsVolumeName,
+				MountPath: VectorDBScriptsMountPath,
+				ReadOnly:  true,
+			},
+			{
+				Name:      LightspeedStackConfig,
+				MountPath: LightspeedStackInitContainerMountPath,
+				SubPath:   LightspeedStackConfigCMKey,
+			},
+		},
+	})
+
 	configBuildCmd := []string{
 		"python3", VectorDBScriptsMountPath + "/" + VectorDBBuildScriptKey,
 		"--vector-db-path", VectorDBVolumeMountPath,
-		"--ogx-config-path", OGXConfigInitContainerMountPath,
+		"--ogx-config-path", VectorDBVolumeOGXConfigPath,
 		"--lightspeed-stack-path", LightspeedStackInitContainerMountPath,
 	}
 	devConfig, _ := parseDevConfig(instance)
@@ -348,11 +381,6 @@ func buildInitContainers(instance *apiv1beta1.OpenStackLightspeed) []corev1.Cont
 				ReadOnly:  true,
 			},
 			{
-				Name:      OGXConfigVolumeName,
-				MountPath: OGXConfigInitContainerMountPath,
-				SubPath:   OGXConfigCMKey,
-			},
-			{
 				Name:      LightspeedStackConfig,
 				MountPath: LightspeedStackInitContainerMountPath,
 				SubPath:   LightspeedStackConfigCMKey,
@@ -371,21 +399,6 @@ func buildLightspeedStackConfigVolume(volumeDefaultMode int32) corev1.Volume {
 			ConfigMap: &corev1.ConfigMapVolumeSource{
 				LocalObjectReference: corev1.LocalObjectReference{
 					Name: LCoreConfigCmName,
-				},
-				DefaultMode: toPtr(volumeDefaultMode),
-			},
-		},
-	}
-}
-
-// buildOGXConfigVolume returns the volume for the OGX config.
-func buildOGXConfigVolume(volumeDefaultMode int32) corev1.Volume {
-	return corev1.Volume{
-		Name: OGXConfigVolumeName,
-		VolumeSource: corev1.VolumeSource{
-			ConfigMap: &corev1.ConfigMapVolumeSource{
-				LocalObjectReference: corev1.LocalObjectReference{
-					Name: LlamaStackConfigCmName,
 				},
 				DefaultMode: toPtr(volumeDefaultMode),
 			},
@@ -654,14 +667,21 @@ func buildLlamaStackEnvVars(h *common_helper.Helper, ctx context.Context, instan
 		}
 	}
 
+	// Baseline default_run.yaml references ${env.OPENAI_API_KEY}; the operator uses a distinct var name.
+	envVars = append(envVars, corev1.EnvVar{
+		Name:  "OPENAI_API_KEY",
+		Value: "unused",
+	})
+
 	// Postgres credentials for ${env.POSTGRESQL_PASSWORD} and ${env.POSTGRESQL_USER}
 	// substitution in llama-stack config
 	envVars = append(envVars, buildPostgresCredsEnvVars()...)
 
-	// PostgreSQL SSL configuration for OGX (llama-stack).
-	// OGX's PostgresSqlStoreConfig does not support ssl_mode/ca_cert_path fields yet
-	// (ogx-ai/ogx#5978), so we configure asyncpg via standard libpq environment
-	// variables to enforce TLS with full certificate verification.
+	envVars = append(envVars, corev1.EnvVar{
+		Name:  "SSL_CERT_FILE",
+		Value: CABundleMountPath,
+	})
+	// PostgreSQL SSL via libpq env vars (ogx-ai/ogx#5978).
 	envVars = append(envVars, corev1.EnvVar{
 		Name:  "PGSSLMODE",
 		Value: PostgresDefaultSSLMode,
@@ -819,15 +839,6 @@ func buildConfigMapAnnotations(h *common_helper.Helper, ctx context.Context) (ma
 		}
 	} else {
 		annotations[LCoreConfigMapResourceVersionAnnotation] = lcoreVersion
-	}
-
-	llamaVersion, err := getConfigMapResourceVersion(ctx, h, LlamaStackConfigCmName, h.GetBeforeObject().GetNamespace())
-	if err != nil {
-		if !errors.IsNotFound(err) {
-			return nil, fmt.Errorf("failed to get Llama Stack configmap resource version: %w", err)
-		}
-	} else {
-		annotations[LlamaStackConfigMapResourceVersionAnnotation] = llamaVersion
 	}
 
 	vectorDBScriptsVersion, err := getConfigMapResourceVersion(ctx, h, VectorDBScriptsConfigMapName, h.GetBeforeObject().GetNamespace())

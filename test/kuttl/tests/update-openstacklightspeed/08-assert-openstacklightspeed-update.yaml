@@ -63,12 +63,6 @@ metadata:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: llama-stack-config
-  namespace: openstack-lightspeed
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
   name: lightspeed-stack-config
   namespace: openstack-lightspeed
 ---
@@ -89,6 +83,7 @@ spec:
     spec:
       initContainers:
         - name: vector-database-collect
+        - name: llama-stack-config-synthesis
         - name: vector-database-config-build
       containers:
         - name: llama-stack
@@ -107,6 +102,8 @@ spec:
                   name: openstack-lightspeed-apitoken-update
             - name: VLLM_URL
               value: http://mock-llm-api-server-pod-UPDATE:8000/v1
+            - name: OPENAI_API_KEY
+              value: unused
             - name: POSTGRESQL_PASSWORD
               valueFrom:
                 secretKeyRef:
@@ -117,6 +114,8 @@ spec:
                 secretKeyRef:
                   key: username
                   name: lightspeed-postgres-secret
+            - name: SSL_CERT_FILE
+              value: /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
             - name: PGSSLMODE
               value: verify-full
             - name: PGSSLROOTCERT
@@ -175,9 +174,6 @@ spec:
               mountPath: /etc/certs/lightspeed-tls
               readOnly: true
       volumes:
-        - name: ogx-config
-          configMap:
-            name: llama-stack-config
         - name: lightspeed-stack-config
           configMap:
             name: lightspeed-stack-config

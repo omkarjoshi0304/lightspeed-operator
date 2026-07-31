@@ -44,7 +44,6 @@ func ReconcileLCoreResources(h *common_helper.Helper, ctx context.Context, insta
 		{Name: "ServiceAccount", Task: reconcileServiceAccount},
 		{Name: "SARRole", Task: reconcileSARRole},
 		{Name: "SARRoleBinding", Task: reconcileSARRoleBinding},
-		{Name: "LlamaStackConfigMap", Task: reconcileLlamaStackConfigMap},
 		{Name: "LcoreConfigMap", Task: reconcileLcoreConfigMap},
 		{Name: "ExporterConfigMap", Task: reconcileExporterConfigMap},
 		{Name: "VectorDBScriptsConfigMap", Task: reconcileVectorDBScriptsConfigMap},
@@ -178,40 +177,6 @@ func reconcileSARRoleBinding(h *common_helper.Helper, ctx context.Context, insta
 	return nil
 }
 
-// reconcileLlamaStackConfigMap ensures the Llama Stack config map exists and is up to date.
-func reconcileLlamaStackConfigMap(h *common_helper.Helper, ctx context.Context, instance *apiv1beta1.OpenStackLightspeed) error {
-	logger := h.GetLogger()
-
-	// Build the YAML data
-	yamlData, err := buildLlamaStackYAML(h, ctx, instance)
-	if err != nil {
-		return fmt.Errorf("%w: %v", ErrGenerateLlamaStackConfigMap, err)
-	}
-
-	cm := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      LlamaStackConfigCmName,
-			Namespace: h.GetBeforeObject().GetNamespace(),
-		},
-	}
-
-	result, err := controllerutil.CreateOrPatch(ctx, h.GetClient(), cm, func() error {
-		// Set Data (same as current selective update)
-		cm.Data = map[string]string{
-			OGXConfigCMKey: yamlData,
-		}
-		// Set owner reference
-		return controllerutil.SetControllerReference(h.GetBeforeObject(), cm, h.GetScheme())
-	})
-
-	if err != nil {
-		return fmt.Errorf("%w: %v", ErrCreateLlamaStackConfigMap, err)
-	}
-
-	logger.Info("Llama Stack ConfigMap reconciled", "name", cm.Name, "result", result)
-	return nil
-}
-
 // reconcileLcoreConfigMap ensures the LCore config map exists and is up to date.
 func reconcileLcoreConfigMap(h *common_helper.Helper, ctx context.Context, instance *apiv1beta1.OpenStackLightspeed) error {
 	logger := h.GetLogger()
@@ -295,9 +260,10 @@ func reconcileVectorDBScriptsConfigMap(h *common_helper.Helper, ctx context.Cont
 
 	result, err := controllerutil.CreateOrPatch(ctx, h.GetClient(), cm, func() error {
 		cm.Data = map[string]string{
-			VectorDBCollectScriptKey: vectorDatabaseCollectScript,
-			VectorDBBuildScriptKey:   vectorDatabaseBuildScript,
-			LlamaStartupWrapperKey:   llamaStartupWrapperScript,
+			VectorDBCollectScriptKey:      vectorDatabaseCollectScript,
+			VectorDBBuildScriptKey:        vectorDatabaseBuildScript,
+			LlamaStartupWrapperKey:        llamaStartupWrapperScript,
+			LlamaStackSynthesizeScriptKey: llamaStackSynthesizeScript,
 		}
 
 		return controllerutil.SetControllerReference(h.GetBeforeObject(), cm, h.GetScheme())

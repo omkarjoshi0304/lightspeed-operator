@@ -5,71 +5,48 @@ apis:
 - safety
 - tool_runtime
 - vector_io
-benchmarks: []
-container_image: null
-datasets: []
 external_providers_dir: /app-root/providers.d
 image_name: openstack-lightspeed-configuration
-inference_store:
-  db_path: .llama/distributions/ollama/inference_store.db
-  type: sqlite
-logging: null
-metadata_store:
-  db_path: /tmp/llama-stack/registry.db
-  namespace: null
-  type: sqlite
 providers:
   agents:
   - config:
       persistence:
         agent_state:
           backend: kv_default
-          namespace: agent_state
-          table_name: agent_state
+          namespace: agents_state
         responses:
           backend: sql_default
-          namespace: agent_responses
-          table_name: agent_responses
+          table_name: agents_responses
     provider_id: meta-reference
     provider_type: inline::meta-reference
   files:
   - config:
       metadata_store:
         backend: sql_default
-        namespace: files_metadata
         table_name: files_metadata
-      storage_dir: /tmp/llama-stack-files
-    provider_id: localfs
+      storage_dir: /tmp/llama-stack/files
+    provider_id: meta-reference-files
     provider_type: inline::localfs
   inference:
-  - config: {}
-    provider_id: sentence-transformers
-    provider_type: inline::sentence-transformers
   - config:
+      allowed_models:
+      - ibm-granite/granite-3.1-8b-instruct
       api_key: ${env.OPENSTACK_LIGHTSPEED_PROVIDER_API_KEY}
       base_url: http://mock-llm-api-server-pod:8000/v1
-    provider_id: openstack-lightspeed-provider
+    provider_id: openai
     provider_type: remote::openai
-  safety:
-  - config:
-      excluded_categories: []
-    provider_id: llama-guard
-    provider_type: inline::llama-guard
+  - provider_id: sentence-transformers
+    provider_type: inline::sentence-transformers
+  safety: []
   tool_runtime:
-  - config: {}
-    provider_id: model-context-protocol
-    provider_type: remote::model-context-protocol
   - config: {}
     provider_id: rag-runtime
     provider_type: inline::rag-runtime
   vector_io:
   - config:
-      kvstore:
-        backend: sql_default
-        table_name: vector_store
       persistence:
         backend: kv_default
-        namespace: vector_persistence
+        namespace: vector_io::faiss
     provider_id: faiss
     provider_type: inline::faiss
   - config:
@@ -88,11 +65,11 @@ providers:
       collection_name: ${env.SOLR_COLLECTION:=portal-rag}
       content_field: ${env.SOLR_CONTENT_FIELD:=chunk}
       embedding_dimension: ${env.SOLR_EMBEDDING_DIM:=384}
-      embedding_model: sentence-transformers//vector-db-discovered-values/okp_embeddings_model
+      embedding_model: ${env.SOLR_EMBEDDING_MODEL:=sentence-transformers/ibm-granite/granite-embedding-30m-english}
       persistence:
         backend: kv_default
         namespace: portal-rag
-      solr_url: ${env.RH_SERVER_OKP}/solr
+      solr_url: http://lightspeed-okp-server.openstack-lightspeed.svc:8080/solr
       vector_field: ${env.SOLR_VECTOR_FIELD:=chunk_vector}
     provider_id: okp_solr
     provider_type: remote::solr_vector_io
@@ -105,35 +82,36 @@ providers:
 registered_resources:
   models:
   - metadata:
-      max_tokens: 2048
-    model_id: ibm-granite/granite-3.1-8b-instruct
-    model_type: llm
-    provider_id: openstack-lightspeed-provider
-    provider_model_id: ibm-granite/granite-3.1-8b-instruct
-  - metadata:
       embedding_dimension: 384
     model_id: solr_embedding
     model_type: embedding
     provider_id: sentence-transformers
-    provider_model_id: /vector-db-discovered-values/okp_embeddings_model
+    provider_model_id: ${env.SOLR_EMBEDDING_MODEL:=ibm-granite/granite-embedding-30m-english}
+  - model_id: ibm-granite/granite-3.1-8b-instruct
+    model_type: llm
+    provider_id: openai
+    provider_model_id: ibm-granite/granite-3.1-8b-instruct
   - metadata:
       embedding_dimension: 768
     model_id: sentence-transformers/all-mpnet-base-v2
     provider_id: sentence-transformers
     provider_model_id: ${env.VECTOR_DB_DATA_PATH}/UUID/embeddings_model
     model_type: embedding
+  shields: []
   tool_groups:
   - provider_id: rag-runtime
     toolgroup_id: builtin::rag
   vector_stores:
   - embedding_dimension: 384
-    embedding_model: sentence-transformers//vector-db-discovered-values/okp_embeddings_model
+    embedding_model: ${env.SOLR_EMBEDDING_MODEL:=sentence-transformers/ibm-granite/granite-embedding-30m-english}
     provider_id: okp_solr
     vector_store_id: portal-rag
   - embedding_dimension: 768
     embedding_model: sentence-transformers/${env.VECTOR_DB_DATA_PATH}/UUID/embeddings_model
     provider_id: os-docs-2026.1-ogx
     vector_store_id: vs_UUID
+safety:
+  default_shield_id: null
 scoring_fns: []
 server:
   auth: null
@@ -167,10 +145,20 @@ storage:
       table_name: openai_conversations
     inference:
       backend: sql_default
+      max_write_queue_size: 10000
+      num_writers: 4
       table_name: inference_store
     metadata:
       backend: kv_default
       namespace: registry
+    prompts:
+      backend: kv_default
+      namespace: prompts
 telemetry:
   enabled: false
-version: '2'
+vector_stores:
+  annotation_prompt_params:
+    enable_annotations: false
+  default_embedding_model: null
+  default_provider_id: faiss
+version: 2
