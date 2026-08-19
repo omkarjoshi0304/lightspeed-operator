@@ -1,0 +1,260 @@
+= Installation Guide
+
+== Prerequisites
+
+* An OpenShift cluster (4.18+).
+* Access to an LLM endpoint and an API key for it. OpenStack Lightspeed follows
+  a Bring Your Own Model (BYOM) approach: any provider from the supported list
+  in xref:supported-providers[Configuration] can be used.
+* A free Red Hat Developer account, to pull certain component images (notably
+  the console plugin) from `registry.redhat.io`. See
+  <<redhat-registry-access>> below.
+* Optionally, an existing `OpenStackControlPlane` if you want the assistant to
+  be aware of your OpenStack deployment.
+
+[#redhat-registry-access]
+== Access to registry.redhat.io images
+
+Some of the images the operator deploys notably the console plugin and the
+OKP (Offline Knowledge Portal) pod, both of which are deployed on every
+install, not opt-in are published on `registry.redhat.io` rather than
+`quay.io`. This is a deliberate
+choice, not an oversight: the team evaluated mirroring these to `quay.io` and
+decided against it, because the `quay.io` copies were not being kept up to
+date. Until
+https://github.com/openstack-k8s-operators/lightspeed-operator/pull/21[PR #21]
+(which exposes image references on the `OpenStackLightspeed` CR) is merged,
+there is no supported way to override these to point elsewhere so, for now,
+plan on having `registry.redhat.io` access available.
+
+The good news: this only requires a **free** account, not a paid subscription.
+
+. Create a free Red Hat Developer account at
+  https://developers.redhat.com/[developers.redhat.com]. This gives you
+  access to developer tools and programs, including the images used here.
+. Get a pull secret for CRC: log in to the
+  https://console.redhat.com/[Hybrid Cloud Console] with that account and
+  download your pull secret. This is the same `pull-secret.txt` referenced as
+  `PULL_SECRET` in the CRC setup below.
+. Verify you have access before deploying, using Podman:
++
+[source,bash]
+----
+$ podman login registry.redhat.io
+Username: <your-redhat-developer-username>
+Password:
+Login Succeeded!
+
+$ podman pull registry.redhat.io/openshift-lightspeed/lightspeed-console-plugin-pf5-rhel9:1.0.12
+Trying to pull registry.redhat.io/openshift-lightspeed/lightspeed-console-plugin-pf5-rhel9:1.0.12...
+Getting image source signatures
+Copying blob ... done
+Copying config ... done
+Writing manifest to image destination
+----
++
+If you are not authenticated, the pull fails instead with:
++
+[source,console]
+----
+Error: unable to copy from source docker://registry.redhat.io/openshift-lightspeed/lightspeed-console-plugin-pf5-rhel9:1.0.12: initializing source docker://...: unable to retrieve auth token: invalid username/password: unauthorized: Please login to the Red Hat Registry using your Customer Portal credentials. Further instructions can be found here: https://access.redhat.com/RegistryAuthentication
+----
++
+That error, or `ImagePullBackOff` on operator-managed pods, is a strong
+signal you need to complete the steps above — see
+xref:_console_widget_not_appearing[Troubleshooting] if it happens on the
+console plugin specifically.
+
+TIP: This is tracked as a documentation TODO: once image references are
+configurable on the CR (`PR #21`), this page will be updated to also show how
+to point them at alternative registries if you prefer.
+
+== Installing the operator
+
+[IMPORTANT]
+====
+OpenStack Lightspeed is not yet searchable from the in-console
+*Operators -> OperatorHub* catalog. Publishing it there is tracked upstream by
+https://github.com/redhat-openshift-ecosystem/community-operators-prod/pull/10781[community-operators-prod PR #10781]
+(initial operator submission) and
+https://github.com/redhat-openshift-ecosystem/community-operators-prod/pull/10782[PR #10782]
+(OCP 4.18 catalog index update), both open as of this writing. Once merged,
+the in-console search flow below will work directly. Until then, use one of
+the two options first.
+====
+
+=== Option 1: Deploy from source (works today)
+
+[source,bash]
+----
+git clone https://github.com/openstack-k8s-operators/lightspeed-operator.git
+cd lightspeed-operator
+make openstack-lightspeed-deploy
+----
+
+This creates a `CatalogSource` pointing at the published
+`quay.io/openstack-lightspeed/operator-catalog:latest` image, plus the
+`openstack-lightspeed` namespace, an `OperatorGroup`, and a `Subscription` —
+then waits for the operator to come up. No OperatorHub listing required.
+
+=== Option 2: Add the catalog source manually
+
+If you don't want to clone the repository, apply the `CatalogSource` yourself:
+
+[source,yaml]
+----
+apiVersion: operators.coreos.com/v1alpha1
+kind: CatalogSource
+metadata:
+  name: openstack-lightspeed-catalog
+  namespace: openshift-marketplace
+spec:
+  sourceType: grpc
+  image: quay.io/openstack-lightspeed/operator-catalog:latest
+  displayName: OpenStack Lightspeed Operator
+  publisher: Red Hat
+----
+
+Once it appears (`oc get catalogsource -n openshift-marketplace`), it shows up
+under *Operators -> OperatorHub* in the console as a regular catalog entry —
+find it there, or create a `Subscription` to it directly.
+
+=== Once published to OperatorHub
+
+After the PRs above merge, the flow becomes the standard one:
+
+. Open the OpenShift web console and navigate to *Operators -> OperatorHub*.
+. Search for *"OpenStack Lightspeed (Community)"*.
+. Click *Install* and select the desired namespace (the default is
+  `openstack-lightspeed`).
+. Track progress under *Operators -> Installed Operators*, or from the CLI:
++
+[source,bash]
+----
+$ oc get -n openstack-lightspeed pods
+NAME                                                              READY   STATUS    RESTARTS   AGE
+openstack-lightspeed-operator-controller-manager-76df7fbfb5wggr   1/1     Running   0          72s
+----
+
+== Don't have a cluster yet? (CRC)
+
+For local development or testing, deploy an OpenShift CRC cluster using
+`install_yamls` before running Option 1 or 2 above:
+
+[source,bash]
+----
+git clone https://github.com/openstack-k8s-operators/install_yamls.git
+cd install_yamls/devsetup
+make download_tools
+
+CRC_VERSION=2.51.0 PULL_SECRET=~/work/pull-secret CRC_MONITORING_ENABLED=true CPUS=12 MEMORY=25600 DISK=100 make crc
+make crc_attach_default_interface
+eval $(crc oc-env)
+cd ../..
+----
+
+`PULL_SECRET` here is the same pull secret from
+<<redhat-registry-access,Access to registry.redhat.io images>> above.
+
+== Setting up LLM credentials
+
+To reach your LLM you need an API key, an endpoint URL, and a model name.
+
+`tlsCACertBundle` is **not** something most upstream users need to set. It
+only matters if your LLM endpoint's TLS certificate isn't already trusted by
+a public certificate authority — for example, a self-hosted vLLM/Ollama
+endpoint using a self-signed or internal-CA certificate. Public providers
+like Gemini, OpenAI, and Anthropic use publicly-trusted certificates, so
+there's nothing to configure for them here; skip straight to applying the CR
+below.
+
+Create the API key secret (referenced later as `llmCredentials`). The secret
+*must* contain a key named `apitoken`:
+
+[source,bash]
+----
+oc apply -f - <<EOF
+apiVersion: v1
+kind: Secret
+type: Opaque
+metadata:
+  name: openstack-lightspeed-apitoken
+  namespace: openstack-lightspeed
+stringData:
+  apitoken: <your-llm-api-key>
+EOF
+----
+
+If your LLM endpoint uses a custom or self-signed certificate, create a
+ConfigMap with the CA bundle (referenced later as `tlsCACertBundle`). Every
+key in the ConfigMap's `data` is parsed as PEM certificate data — the key
+name itself doesn't matter (`cert` below is just a convention, not a
+requirement), and you can include multiple keys/certificates:
+
+[source,bash]
+----
+oc apply -f - <<EOF
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: openstack-lightspeed-certs
+  namespace: openstack-lightspeed
+data:
+  cert: |
+$(sed 's/^/    /' /path/to/cert.crt)
+EOF
+----
+
+== Deploying OpenStackLightspeed
+
+Apply the `OpenStackLightspeed` custom resource. At minimum you must set
+`llmEndpoint`, `llmEndpointType`, `modelName`, and `llmCredentials` — see
+xref:_configuration[Configuration] for the full set of options:
+
+[source,yaml]
+----
+apiVersion: lightspeed.openstack.org/v1beta1
+kind: OpenStackLightspeed
+metadata:
+  name: openstack-lightspeed
+  namespace: openstack-lightspeed
+spec:
+  llmEndpoint: https://<llm-provider-host>:<port>/v1
+  llmEndpointType: openai
+  llmCredentials: openstack-lightspeed-apitoken
+  modelName: <model-name>
+  tlsCACertBundle: openstack-lightspeed-certs # optional
+----
+
+The operator reconciles this resource into the full stack: the AI engine
+(lightspeed-stack and llama-stack/OGX), PostgreSQL, and the OpenShift console
+plugin.
+
+== Verifying the deployment
+
+Check the `Ready` condition on the `OpenStackLightspeed` resource, and inspect
+the deployments it created:
+
+[source,bash]
+----
+oc describe -n openstack-lightspeed openstacklightspeed
+oc get -n openstack-lightspeed deployments,pods
+----
+
+See xref:_troubleshooting[Troubleshooting] if the resource does not reach
+`Ready`.
+
+== Accessing the assistant
+
+Once ready, open the
+https://console-openshift-console.apps-crc.testing[OpenShift web console] and
+use the Lightspeed widget in the lower-right corner. You may need to click the
+*refresh* link that appears in a console notification the first time the
+plugin is activated.
+
+If you are running CRC on a remote machine, you can reach the console with
+`sshuttle`:
+
+* Add this line to your local `/etc/hosts` (don't change the IP):
+  `192.168.130.11 api.crc.testing canary-openshift-ingress-canary.apps-crc.testing console-openshift-console.apps-crc.testing default-route-openshift-image-registry.apps-crc.testing downloads-openshift-console.apps-crc.testing oauth-openshift.apps-crc.testing`
+* Run `sshuttle -r $remote_username@$remote_server 192.168.130.0/24`.

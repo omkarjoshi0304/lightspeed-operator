@@ -430,3 +430,34 @@ catalog-build: opm ## Build a catalog image.
 .PHONY: catalog-push
 catalog-push: ## Push a catalog image.
 	$(MAKE) docker-push IMG=$(CATALOG_IMG)
+
+##@ Documentation
+
+.PHONY: .bundle
+.bundle:
+	if ! type bundle; then \
+	echo "Bundler not found. On Linux run 'sudo dnf install /usr/bin/bundle' to install it."; \
+	exit 1; \
+	fi
+
+	bundle config set --local path 'local/bundle'; bundle install
+
+.PHONY: docs-dependencies
+docs-dependencies: .bundle ## Convert markdown docs to ascii docs
+	bundle exec kramdoc README.md -o docs/readme.adoc
+
+.PHONY: docs
+docs: docs-dependencies ## Build docs
+	cd docs; $(MAKE) html
+
+.PHONY: docs-preview
+docs-preview: docs ## Build docs and open them in a browser
+	cd docs; $(MAKE) open-html
+
+.PHONY: docs-watch
+docs-watch: docs-preview ## Build docs, open them, and rebuild on file changes
+	cd docs; $(MAKE) watch-html
+
+.PHONY: docs-clean
+docs-clean: ## Remove built docs
+	rm -rf docs_build

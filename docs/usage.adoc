@@ -1,0 +1,64 @@
+= Usage
+
+== Asking questions
+
+Once the `OpenStackLightspeed` resource is `Ready`, open the OpenShift web
+console and use the Lightspeed widget (bottom-right corner). Ask questions in
+natural language, for example:
+
+* "How can I spin up a VM using the OpenStack CLI?"
+* "Why would a Nova compute service show as down?"
+
+Responses are grounded via retrieval-augmented generation (RAG), and include
+references you can verify. By default, grounding comes from
+xref:_offline_knowledge_portal_okp[OKP] (deployed automatically with every
+install, browsable without any extra credentials — see Configuration for the
+free vs. keyed tiers). The bundled community OpenStack/OpenShift
+documentation is also available as a RAG source, but only if you explicitly
+set `dev.okpRagOnly: false`.
+
+== Cluster introspection (optional)
+
+When the `rhoso_mcps` dev feature flag is enabled (see
+xref:_configuration[Configuration]), the assistant gains read-only tools
+to inspect your actual OpenStack and OpenShift resources rather than relying
+on documentation alone — for example, checking the status of a specific
+service or resource in your deployment.
+
+* All introspection is **strictly read-only**: the assistant cannot modify
+  your cluster or your OpenStack deployment through these tools.
+* Introspection happens locally, inside your cluster. Only the assistant's
+  query and retrieved context are sent to your configured LLM provider.
+* The operator automatically provisions a scoped Keystone Application
+  Credential for this purpose when an `OpenStackControlPlane` is detected —
+  no manual credential setup is required.
+
+This capability is still evolving and ships disabled by default.
+
+== Feedback and transcripts
+
+Two independent, administrator-controlled settings affect data collection:
+
+* `feedbackEnabled` (default `true`) lets users thumbs-up/down individual
+  responses.
+* `transcriptsEnabled` (default `false`) additionally collects full
+  conversation transcripts.
+
+Both are configured on the `OpenStackLightspeed` resource — see
+xref:_configuration[Configuration]. Collected data is used to improve
+answer quality in future releases; disable either setting if that doesn't fit
+your environment's data handling policy.
+
+== Support
+
+OpenStack Lightspeed is a **community release**. Support is provided
+**upstream only**, through GitHub Issues — there is no separate Red Hat
+support entitlement for this project at this stage:
+
+* Operator issues: https://github.com/openstack-k8s-operators/lightspeed-operator/issues
+* RAG content issues: https://github.com/openstack-k8s-operators/lightspeed-rag-content/issues
+* MCP tooling issues: https://github.com/openstack-k8s-operators/lightspeed-mcps/issues
+
+When filing an issue, include the output of `oc describe openstacklightspeed`,
+relevant pod logs, and your (redacted) `OpenStackLightspeed` spec — see
+xref:_troubleshooting[Troubleshooting] for details.

@@ -34,3 +34,10 @@ kuttl-report-openstack-lightspeed.xml
 
 # Vulnerability scan output
 vuln_output.json
+
+# Ruby bundle related files
+/.bundle
+/local
+/Gemfile.lock
+docs/readme.adoc
+/docs_build

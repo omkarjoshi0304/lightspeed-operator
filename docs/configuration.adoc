@@ -1,0 +1,214 @@
+= Configuration
+
+All configuration is expressed through the `OpenStackLightspeed` custom
+resource (`lightspeed.openstack.org/v1beta1`). This page documents every field
+in its `spec`.
+
+== Core fields
+
+[cols="1,1,3", options="header"]
+|===
+|Field |Required |Description
+
+|`llmEndpoint`
+|Yes
+|URL of the LLM endpoint (e.g. `\https://api.openai.com/v1`). Must start with `http://` or `https://`.
+
+|`llmEndpointType`
+|Yes
+|Type of provider serving the LLM. See <<supported-providers>>.
+
+|`modelName`
+|Yes
+|Name of the model to use at `llmEndpoint`.
+
+|`llmCredentials`
+|Yes
+|Name of a `Secret` in the same namespace containing the API token under the key `apitoken`.
+
+|`tlsCACertBundle`
+|No
+|Name of a `ConfigMap` in the same namespace containing a CA certificate bundle, for endpoints using a custom or self-signed certificate.
+
+|`maxTokensForResponse`
+|No
+|Maximum number of tokens to use for response generation. Minimum `1`. Defaults to `2048`.
+
+|`llmProjectID`
+|No
+|Project ID, required by some providers (e.g. WatsonX).
+
+|`llmDeploymentName`
+|No
+|Deployment name, required by some providers (e.g. Azure OpenAI).
+
+|`llmAPIVersion`
+|No
+|API version, required by some providers (e.g. Azure OpenAI).
+
+|`feedbackEnabled`
+|No
+|Enables user feedback collection on responses. Defaults to `true`.
+
+|`transcriptsEnabled`
+|No
+|Enables conversation transcript collection. Defaults to `false`.
+|===
+
+[#supported-providers]
+== Supported LLM providers (`llmEndpointType`)
+
+* `openai` — OpenAI-compatible endpoints (including self-hosted, e.g. Ollama, vLLM).
+* `azure_openai` — Microsoft Azure OpenAI. Requires `llmDeploymentName` and `llmAPIVersion`.
+* `watsonx` — IBM watsonx.ai. Requires `llmProjectID`.
+* `rhoai_vllm` — vLLM served through Red Hat OpenShift AI.
+* `rhelai_vllm` — vLLM served through RHEL AI.
+* `gemini` — Google Gemini.
+
+TIP: The list of supported providers is enforced by the CRD's validation
+schema. Check the `llmEndpointType` field description on the CRD installed in
+your cluster (`oc explain openstacklightspeed.spec.llmEndpointType`) for the
+authoritative, up-to-date list, since new providers are added over time.
+
+== Logging (`logging`)
+
+[cols="1,1,3", options="header"]
+|===
+|Field |Default |Description
+
+|`logging.ogxLogLevel`
+|`all=info`
+|Log level for the llama-stack/OGX container. Accepts a standard level or fine-grained `component=level` pairs (e.g. `core=debug,providers=info`).
+
+|`logging.lightspeedStackLogLevel`
+|`INFO`
+|Log level for the lightspeed-service-api container. One of `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`.
+
+|`logging.dataverseExporterLogLevel`
+|`INFO`
+|Log level for the transcript/feedback exporter sidecar. Same values as above.
+
+|`logging.postgresLogLevel`
+|`INFO`
+|Log level for the PostgreSQL container. `DEBUG` additionally logs every SQL statement.
+|===
+
+== Persistent storage (`database`)
+
+Omit this field to use an `emptyDir` volume for PostgreSQL (data is lost on
+pod reschedule). Set it to provision a PersistentVolumeClaim instead:
+
+[source,yaml]
+----
+spec:
+  database:
+    size: "5Gi"          # defaults to 1Gi
+    class: "my-storage-class"  # defaults to the cluster's default StorageClass
+----
+
+== Container resources (`resources`)
+
+Every container managed by the operator has a sensible default resource
+request/limit. Override any of them; the value you provide replaces the
+default entirely (it is not merged):
+
+[source,yaml]
+----
+spec:
+  resources:
+    llamaStack:
+      requests: {cpu: "500m", memory: "2Gi"}
+      limits: {cpu: "2", memory: "8Gi"}
+    lightspeedService:
+      requests: {cpu: "250m", memory: "512Mi"}
+      limits: {cpu: "1", memory: "2Gi"}
+    postgres:
+      requests: {cpu: "30m", memory: "300Mi"}
+      limits: {cpu: "500m", memory: "2Gi"}
+    okp:
+      requests: {cpu: "500m", memory: "2Gi"}
+      limits: {cpu: "2", memory: "4Gi"}
+    consolePlugin:
+      requests: {cpu: "50m", memory: "64Mi"}
+      limits: {cpu: "200m", memory: "256Mi"}
+    mcp:
+      requests: {cpu: "50m", memory: "64Mi"}
+      limits: {memory: "200Mi"}
+----
+
+== Offline Knowledge Portal (`okp`)
+
+[IMPORTANT]
+====
+Unlike the other fields on this page, OKP is **not** opt-in infrastructure.
+The operator deploys an OKP pod on every `OpenStackLightspeed` instance
+regardless of whether `spec.okp` is set. `spec.okp` only *configures* OKP
+(access key, offline mode) — it does not control whether it gets deployed.
+Pulling the OKP image requires the same free `registry.redhat.io` account
+already covered in <<redhat-registry-access,Access to registry.redhat.io
+images>>; see that section to set it up.
+====
+
+`accessKey` is optional and controls which tier of OKP content you get:
+
+[source,yaml]
+----
+spec:
+  okp: {}   # no access key: browsing works, search does not
+----
+
+[source,yaml]
+----
+spec:
+  okp:
+    accessKey: okp-access-key-secret # Secret containing key "access_key"
+----
+
+* **Without `accessKey`** (the default) — documentation and product lifecycle
+  content can be browsed, but search, Solutions, and Articles are
+  unavailable. This is the tier upstream users are expected to run on.
+* **With `accessKey`** — unlocks full search and the encrypted knowledgebase
+  content. Getting a key requires an active Red Hat Satellite subscription
+  (see
+  https://access.redhat.com/offline/access[access.redhat.com/offline/access]);
+  treat this as a bonus for organizations that already have one, not
+  something every upstream user needs.
+
+**RAG source, by default, is OKP-only.** The `dev.okpRagOnly` flag (see
+below) defaults to `true` when unset, which disables the bundled
+community-documentation vector database entries in favor of OKP alone. Set
+`dev.okpRagOnly: false` explicitly if you want the bundled community
+OpenStack/OpenShift documentation included as a RAG source instead of (or
+alongside) OKP.
+
+== Developer / experimental options (`dev`)
+
+[WARNING]
+====
+`dev` is **not** part of the stable API. Fields here may change or be removed
+without notice between releases.
+====
+
+[source,yaml]
+----
+spec:
+  dev:
+    featureFlags:
+      - rhoso_mcps   # enables the read-only MCP introspection sidecar
+    okpChunkFilterQuery: "product:(*openstack* OR *openshift*)" # overrides the auto-detected default
+    okpRagOnly: false  # false: include the bundled community docs too, not just OKP
+    rhosMCPConfig: |
+      debug: true
+      workers: 4
+----
+
+If `okpChunkFilterQuery` is left unset, the operator auto-detects your
+OpenShift and RHOSO versions and builds a version-aware filter query itself
+rather than using the literal string shown above (which is just an example
+override).
+
+`rhoso_mcps` is currently the primary feature flag: enabling it deploys an
+MCP (Model Context Protocol) server sidecar that gives the assistant
+strictly read-only introspection tools against your OpenStack and OpenShift
+resources. See xref:_usage[Usage] for details on what it does and how
+credentials are obtained.
