@@ -433,31 +433,27 @@ catalog-push: ## Push a catalog image.
 
 ##@ Documentation
 
-.PHONY: .bundle
-.bundle:
-	if ! type bundle; then \
-	echo "Bundler not found. On Linux run 'sudo dnf install /usr/bin/bundle' to install it."; \
+DOCS_VENV = docs/.venv
+DOCS_PYTHON = $(DOCS_VENV)/bin/python
+
+.PHONY: .docs-venv
+.docs-venv:
+	if ! command -v python3 > /dev/null; then \
+	echo "python3 not found. Install Python 3 to build the docs."; \
 	exit 1; \
 	fi
-
-	bundle config set --local path 'local/bundle'; bundle install
-
-.PHONY: docs-dependencies
-docs-dependencies: .bundle ## Convert markdown docs to ascii docs
-	bundle exec kramdoc README.md -o docs/readme.adoc
+	test -d $(DOCS_VENV) || python3 -m venv $(DOCS_VENV)
+	$(DOCS_PYTHON) -m pip install --quiet --upgrade pip
+	$(DOCS_PYTHON) -m pip install --quiet -r docs/requirements.txt
 
 .PHONY: docs
-docs: docs-dependencies ## Build docs
-	cd docs; $(MAKE) html
+docs: .docs-venv ## Build docs (Sphinx, matching the Read the Docs build)
+	$(DOCS_VENV)/bin/sphinx-build -W -b html docs docs/_build/html
 
 .PHONY: docs-preview
 docs-preview: docs ## Build docs and open them in a browser
-	cd docs; $(MAKE) open-html
-
-.PHONY: docs-watch
-docs-watch: docs-preview ## Build docs, open them, and rebuild on file changes
-	cd docs; $(MAKE) watch-html
+	open docs/_build/html/index.html || xdg-open docs/_build/html/index.html
 
 .PHONY: docs-clean
 docs-clean: ## Remove built docs
-	rm -rf docs_build
+	rm -rf docs/_build
