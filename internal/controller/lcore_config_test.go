@@ -17,6 +17,7 @@ limitations under the License.
 package controller
 
 import (
+	"context"
 	"testing"
 
 	apiv1beta1 "github.com/openstack-k8s-operators/lightspeed-operator/api/v1beta1"
@@ -173,6 +174,50 @@ func TestBuildLCoreQuotaHandlersConfig_EnableTokenHistory(t *testing.T) {
 
 		config := buildLCoreQuotaHandlersConfig(h, instance)
 		assertField(t, config, "enable_token_history", want)
+	}
+}
+
+func TestBuildLCoreRetrievalConfig(t *testing.T) {
+	config := buildLCoreRetrievalConfig(&apiv1beta1.OpenStackLightspeed{})
+
+	inline, hasInline := config["inline"].(map[string]interface{})
+	if !hasInline {
+		t.Fatalf("expected inline retrieval, got %v", config)
+	}
+	inlineSources, ok := inline["sources"].([]interface{})
+	if !ok || len(inlineSources) != 0 {
+		t.Errorf("inline sources = %v, want []", inline["sources"])
+	}
+
+	tool, hasTool := config["tool"].(map[string]interface{})
+	if !hasTool {
+		t.Fatalf("expected tool retrieval, got %v", config)
+	}
+	sources, ok := tool["sources"].([]interface{})
+	if !ok || len(sources) != 1 || sources[0] != "okp" {
+		t.Errorf("tool sources = %v, want [okp]", tool["sources"])
+	}
+}
+
+func TestBuildLCoreRAGConfig_AlwaysIncludesOKP(t *testing.T) {
+	h := newTestHelper(t)
+	instance := &apiv1beta1.OpenStackLightspeed{}
+
+	rag := buildLCoreRAGConfig(context.Background(), h, instance)
+	if _, hasOKP := rag["okp"]; !hasOKP {
+		t.Errorf("expected rag.okp to always be present, got %v", rag)
+	}
+	retrieval := rag["retrieval"].(map[string]interface{})
+	if _, hasTool := retrieval["tool"]; !hasTool {
+		t.Errorf("expected rag.retrieval.tool, got %v", retrieval)
+	}
+	inline, hasInline := retrieval["inline"].(map[string]interface{})
+	if !hasInline {
+		t.Fatalf("expected rag.retrieval.inline, got %v", retrieval)
+	}
+	inlineSources, ok := inline["sources"].([]interface{})
+	if !ok || len(inlineSources) != 0 {
+		t.Errorf("inline sources = %v, want []", inline["sources"])
 	}
 }
 

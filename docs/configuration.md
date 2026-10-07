@@ -131,9 +131,10 @@ spec:
 ## Offline knowledge portal
 
 > [!IMPORTANT]
-> OKP is deployed on **every** install — `spec.okp` configures it, it
-> doesn't gate whether it's deployed. Pulling its image needs the same
-> free `registry.redhat.io` account described in the [installation guide](install_guide.md#access-to-registry-images).
+> OKP is deployed on **every** install and always exposed through the OGX
+> `file-search` tool — `spec.okp` configures it, it doesn't gate whether
+> it's deployed. Pulling its image needs the same free `registry.redhat.io`
+> account described in the [installation guide](install_guide.md#access-to-registry-images).
 
 ```yaml
 spec:
@@ -233,10 +234,10 @@ spec:
       containerImage: quay.io/openstack-lightspeed/lightspeed-mcps:latest
 ```
 
-- `okpChunkFilterQuery` and `okpRagOnly` take effect immediately, with
-  no `featureFlags` entry needed — they're independent of
-  `rhoso_mcps`. If unset, `okpChunkFilterQuery` auto-detects your
-  OpenShift/RHOSO versions instead of using the literal example above.
+- `okpChunkFilterQuery` and `okpRagOnly` take effect immediately, with no
+  `featureFlags` entry needed — they're independent of `rhoso_mcps`. If
+  unset, `okpChunkFilterQuery` auto-detects your OpenShift/RHOSO versions
+  instead of using the literal example above.
 - `rhoso_mcps` — the one flag that does need to be set. Deploys the MCP
   introspection sidecar, which is read-only **by default**. See
   [Usage](usage.md).
