@@ -342,17 +342,34 @@ func buildLCoreMCPServersConfigIfEnabled(instance *apiv1beta1.OpenStackLightspee
 	return buildLCoreMCPServersConfig(instance.Status.OpenStackReady), nil
 }
 
+// buildLCoreRetrievalConfig builds the rag.retrieval section.
+// OKP is always exposed via the file-search tool; empty inline.sources is
+// filled by vector-database-config-build with BYOK vector store IDs.
+func buildLCoreRetrievalConfig(_ *apiv1beta1.OpenStackLightspeed) map[string]interface{} {
+	return map[string]interface{}{
+		"inline": map[string]interface{}{
+			"sources": []interface{}{},
+		},
+		"tool": map[string]interface{}{
+			"sources": []interface{}{"okp"},
+		},
+	}
+}
+
+// buildLCoreRAGConfig builds the rag section of the lightspeed-stack config.
+func buildLCoreRAGConfig(ctx context.Context, h *common_helper.Helper, instance *apiv1beta1.OpenStackLightspeed) map[string]interface{} {
+	return map[string]interface{}{
+		"byok": map[string]interface{}{
+			"stores": []interface{}{},
+		},
+		"retrieval": buildLCoreRetrievalConfig(instance),
+		"okp":       buildOKPConfig(ctx, h, instance),
+	}
+}
+
 // buildLCoreConfigYAML assembles the complete Lightspeed Core Service configuration and converts to YAML.
 // NOTE: tools approval features are disabled for OpenStack Lightspeed.
 func buildLCoreConfigYAML(ctx context.Context, h *common_helper.Helper, instance *apiv1beta1.OpenStackLightspeed) (string, error) {
-
-	ragInline := []interface{}{"okp"}
-	ragConfig := map[string]interface{}{
-		"inline": map[string]interface{}{
-			"sources": ragInline,
-		},
-	}
-
 	mcpServers, err := buildLCoreMCPServersConfigIfEnabled(instance)
 	if err != nil {
 		return "", err
@@ -369,14 +386,8 @@ func buildLCoreConfigYAML(ctx context.Context, h *common_helper.Helper, instance
 		"database":             buildLCoreDatabaseConfig(h, instance),
 		"customization":        buildLCoreCustomizationConfig(),
 		"conversation_cache":   buildLCoreConversationCacheConfig(h, instance),
-		"rag": map[string]interface{}{
-			"byok": map[string]interface{}{
-				"stores": []interface{}{},
-			},
-			"okp":       buildOKPConfig(ctx, h, instance),
-			"retrieval": ragConfig,
-		},
-		"mcp_servers": mcpServers,
+		"rag":                  buildLCoreRAGConfig(ctx, h, instance),
+		"mcp_servers":          mcpServers,
 	}
 
 	if quotaHandlers := buildLCoreQuotaHandlersConfig(h, instance); quotaHandlers != nil {

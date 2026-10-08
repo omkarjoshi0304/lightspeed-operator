@@ -108,6 +108,8 @@ rag:
     rhokp_url: ${env.RH_SERVER_OKP}
   retrieval:
     inline:
+      sources: []
+    tool:
       sources:
       - okp
 service:

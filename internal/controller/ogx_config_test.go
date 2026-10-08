@@ -157,4 +157,50 @@ var _ = ginkgo.Describe("OGX config", func() {
 			ginkgo.Entry("for watsonx", WatsonXProviderName),
 		)
 	})
+
+	ginkgo.Describe("buildOGXToolRuntime", func() {
+		ginkgo.It("always includes file-search", func() {
+			instance := getOpenStackLightspeedProvidersInstance(OpenAIProviderName)
+			providers := buildOGXToolRuntime(nil, instance)
+			gomega.Expect(providers).To(gomega.HaveLen(2))
+			gomega.Expect(providers[0].(map[string]interface{})["provider_id"]).To(gomega.Equal("model-context-protocol"))
+			gomega.Expect(providers[1].(map[string]interface{})["provider_id"]).To(gomega.Equal("file-search"))
+		})
+	})
+
+	ginkgo.Describe("buildOGXToolGroups", func() {
+		ginkgo.It("always includes file_search tool group", func() {
+			instance := getOpenStackLightspeedProvidersInstance(OpenAIProviderName)
+			groups := buildOGXToolGroups(nil, instance)
+			gomega.Expect(groups).To(gomega.HaveLen(1))
+			gomega.Expect(groups[0].(map[string]interface{})["toolgroup_id"]).To(gomega.Equal("builtin::file_search"))
+			gomega.Expect(groups[0].(map[string]interface{})["provider_id"]).To(gomega.Equal("file-search"))
+		})
+	})
+
+	ginkgo.Describe("OKP always enabled", func() {
+		ginkgo.It("includes okp_solr in vector_io", func() {
+			instance := getOpenStackLightspeedProvidersInstance(OpenAIProviderName)
+			providers := buildOGXVectorIO(nil, instance, "product:openstack")
+			ids := make([]string, 0, len(providers))
+			for _, p := range providers {
+				ids = append(ids, p.(map[string]interface{})["provider_id"].(string))
+			}
+			gomega.Expect(ids).To(gomega.ContainElement("okp_solr"))
+		})
+
+		ginkgo.It("includes portal-rag vector store and solr_embedding model", func() {
+			instance := getOpenStackLightspeedProvidersInstance(OpenAIProviderName)
+			stores := buildOGXVectorStores(nil, instance)
+			gomega.Expect(stores).To(gomega.HaveLen(1))
+			gomega.Expect(stores[0].(map[string]interface{})["vector_store_id"]).To(gomega.Equal("portal-rag"))
+
+			models := buildOGXModels(nil, instance)
+			modelIDs := make([]string, 0, len(models))
+			for _, m := range models {
+				modelIDs = append(modelIDs, m.(map[string]interface{})["model_id"].(string))
+			}
+			gomega.Expect(modelIDs).To(gomega.ContainElement("solr_embedding"))
+		})
+	})
 })
