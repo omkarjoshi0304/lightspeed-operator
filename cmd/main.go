@@ -52,7 +52,6 @@ import (
 	lightspeedv1beta1 "github.com/openstack-k8s-operators/lightspeed-operator/api/v1beta1"
 	"github.com/openstack-k8s-operators/lightspeed-operator/internal/controller"
 	webhookv1beta1 "github.com/openstack-k8s-operators/lightspeed-operator/internal/webhook/v1beta1"
-	telemetryv1 "github.com/openstack-k8s-operators/telemetry-operator/api/v1beta1"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -353,6 +352,5 @@ func getDynamicWatchCRDs() map[schema.GroupVersionKind]*atomic.Bool {
 			Version: "v1beta1",
 			Kind:    "KeystoneApplicationCredential",
 		}: new(atomic.Bool),
-		telemetryv1.GroupVersion.WithKind(controller.MetricStorageKind): new(atomic.Bool),
 	}
 }
