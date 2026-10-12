@@ -6,6 +6,10 @@ ARG TARGETOS
 ARG TARGETARCH
 ARG GOMAXPROCS
 
+# UBI defaults to GOTOOLCHAIN=local. Allow the patched version required by
+# go.mod to be selected when the builder image's bundled Go is older.
+ENV GOTOOLCHAIN=auto
+
 WORKDIR /workspace
 # Copy the Go Modules manifests
 COPY go.mod go.mod
